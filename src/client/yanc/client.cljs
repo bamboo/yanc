@@ -52,7 +52,7 @@ optionally applying function map-event-fn."
 
 (def key-ups (event-chan input-box (.-KEYUP gevents/EventType) event->key))
 
-(declare chat-loop write-to key->chat-command)
+(declare chat-loop write-edn key->chat-command)
 
 (defn main []
   (go-loop [key (<! key-ups)]
@@ -76,14 +76,14 @@ optionally applying function map-event-fn."
         socket (.connect Primus socket-url)
         events (merge [(map< key->chat-command (filter< (partial not= :unknown-key) key-ups))
                        (socket-chan socket)])]
-    (write-to socket [:user-joined nick])
     (go-loop [e (<! events)]
       (match e
-       [:post-message message] (write-to socket [:message nick message])
-       [:message user message] (append-html "<b>%s</b> %s" user message)
-       [:user-joined user] (append-html "<b>%s</b> has entered the room." user)
-       [:user-left user] (append-html "<b>%s</b> has left the room." user)
-       :else (println "unknown event:" e))
+        [:identify] (write-edn socket [:user-joined nick])
+        [:post-message message] (write-edn socket [:message nick message])
+        [:message user message] (append-html "<b>%s</b> %s" user message)
+        [:user-joined user] (append-html "<b>%s</b> has entered the room." user)
+        [:user-left user] (append-html "<b>%s</b> has left the room." user)
+        :else (println "unknown event:" e))
       (recur (<! events)))))
 
 (defn key->chat-command [key]
@@ -93,7 +93,7 @@ optionally applying function map-event-fn."
     :up [:history-up]
     :down [:history-down]))
 
-(defn write-to [socket message]
+(defn write-edn [socket message]
   (.write socket (pr-str message)))
 
 (main)
