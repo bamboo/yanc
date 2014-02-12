@@ -4,7 +4,19 @@ Yet another node/ClojureScript/WebSocket experiment.
 
 ## Usage
 
-To get a CIDER REPL, use cider-jack-in and at the repl:
+```
+lein npm install
+lein resource
+lein cljsbuild once
+cd target/app
+node server.js
+```
+
+Open two different browsers at [http://localhost:8080/](http://localhost:8080/) and have a blast talking to yourself.
+
+## Hacking
+
+To get a node cider REPL going, use cider-jack-in and at the repl:
 
 ```
 user> (require '[cljs.repl.node :as node])
