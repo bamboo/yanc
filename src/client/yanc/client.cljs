@@ -8,12 +8,15 @@
    [goog.dom :as dom]
    [goog.events :as gevents]
    [goog.string :as gstr]
-   [cljs.core.async :as async :refer [chan put! <! pipe unique merge map< filter< alts!]]
-   [cljs.core.match]))
+   [cljs.core.async :as async :refer [chan put! <! merge map< filter<]]
+   [cljs.core.match]
+   [cljs.reader :as reader]))
 
 (enable-console-print!)
 
 (def input-box (dom/getElement "input-box"))
+
+(defn input-box-value [] (gforms/getValue input-box))
 
 (def output (dom/getElement "output"))
 
@@ -49,7 +52,7 @@ optionally applying function map-event-fn."
 
 (def key-ups (event-chan input-box (.-KEYUP gevents/EventType) event->key))
 
-(declare chat-loop post-message key->chat-command)
+(declare chat-loop write-to key->chat-command)
 
 (defn main []
   (go-loop [key (<! key-ups)]
@@ -58,16 +61,26 @@ optionally applying function map-event-fn."
       nil)
     (recur (<! key-ups))))
 
+(def Primus (js* "Primus"))
+
+(def socket-url (.-URL (dom/getDocument)))
+
+(defn socket-chan [socket]
+  (let [c (chan)]
+    (.on socket "data" #(put! c (reader/read-string %)))
+    c))
+
 (defn chat-loop []
-  (append-html "joining...")
-  (let [socket nil
-        socket-chan (chan)
+  (let [nick (input-box-value)
+        _ (append-html "joining <b>%s</b> as <b>%s</b>" socket-url nick)
+        socket (.connect Primus socket-url)
         events (merge [(map< key->chat-command (filter< (partial not= :unknown-key) key-ups))
-                       socket-chan])]
+                       (socket-chan socket)])]
+    (write-to socket [:user-joined nick])
     (go-loop [e (<! events)]
       (match e
-       [:message-posted message] (post-message socket message)
-       [:message-received user message] (append-html "<b>%s</b> %s" user message)
+       [:post-message message] (write-to socket [:message nick message])
+       [:message user message] (append-html "<b>%s</b> %s" user message)
        [:user-joined user] (append-html "<b>%s</b> has entered the room." user)
        [:user-left user] (append-html "<b>%s</b> has left the room." user)
        :else (println "unknown event:" e))
@@ -75,12 +88,12 @@ optionally applying function map-event-fn."
 
 (defn key->chat-command [key]
   (case key
-    :enter [:message-posted (gforms/getValue input-box)]
+    :enter [:post-message (input-box-value)]
     :escape [:quit]
     :up [:history-up]
     :down [:history-down]))
 
-(defn post-message [socket message]
-  (append-html "posting <b>%s</b>" message))
+(defn write-to [socket message]
+  (.write socket (pr-str message)))
 
 (main)
