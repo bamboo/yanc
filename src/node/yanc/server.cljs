@@ -1,9 +1,11 @@
 (ns yanc.server
   (:require-macros
-   [cljs.core.async.macros :refer [go-loop]])
+   [cljs.core.async.macros :refer [go-loop]]
+   [cljs.core.match.macros :refer [match]])
   (:require
    [cljs.core :as cljs]
    [cljs.core.async :as async :refer [chan put! <! merge map< filter< close!]]
+   [cljs.core.match]
    [cljs.nodejs :as node :refer [require]]
    [cljs.reader :as reader]))
 
@@ -11,10 +13,10 @@
   (go-loop []
     (when-let [e (<! ch)]
       (println e)
-      (case (first e)
-        :connection (println "connection:" (aget (second e) "id"))
-        :disconnection (println "disconnection:" (aget (second e) "id"))
-        :data (let [[_ spark message] e] (.write primus (pr-str message)))
+      (match e
+        [:connection spark] (println "connection:" (aget spark "id"))
+        [:disconnection spark] (println "disconnection:" (aget spark "id"))
+        [:data spark message] (.write primus (pr-str message))
         :else (println "unknown event:" e))
       (recur))))
 
