@@ -8,7 +8,7 @@
    [goog.dom :as dom]
    [goog.events :as gevents]
    [goog.string :as gstr]
-   [cljs.core.async :as async :refer [chan put! <! merge map< filter<]]
+   [cljs.core.async :refer [chan put! <! merge map< filter<]]
    [cljs.core.match]
    [cljs.reader :as reader]))
 
@@ -74,8 +74,10 @@ optionally applying function map-event-fn."
   (let [nick (input-box-value)
         _ (append-html "joining <b>%s</b> as <b>%s</b>" socket-url nick)
         socket (.connect Primus socket-url)
-        events (merge [(map< key->chat-command (filter< (partial not= :unknown-key) key-ups))
-                       (socket-chan socket)])]
+        events (merge [(socket-chan socket)
+                       (->> key-ups
+                            (filter< (partial not= :unknown-key))
+                            (map< key->chat-command))])]
     (go-loop [e (<! events)]
       (match e
         [:identify] (write-edn socket [:user-joined nick])

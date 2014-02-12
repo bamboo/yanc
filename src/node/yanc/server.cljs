@@ -4,13 +4,13 @@
    [cljs.core.match.macros :refer [match]])
   (:require
    [cljs.core :as cljs]
-   [cljs.core.async :as async :refer [chan put! <! close!]]
+   [cljs.core.async :refer [chan put! <! close!]]
    [cljs.core.match]
    [cljs.nodejs :as node :refer [require]]
    [cljs.reader :as reader]))
 
 (defn id [spark]
-  (aget spark "id"))
+  (.-id spark))
 
 (defn write-edn [socket data]
   (.write socket (pr-str data)))
