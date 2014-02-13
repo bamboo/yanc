@@ -14,6 +14,8 @@ node server.js
 
 Open two different browsers at [http://localhost:8080/](http://localhost:8080/) and have a blast talking to yourself.
 
+There's also a client built with [Reagent](http://holmsand.github.io/reagent/) - a minimalistic interface between ClojureScript and [React](http://facebook.github.io/react/) - at [http://localhost:8080/react.html](http://localhost:8080/react.html). 
+
 ## Hacking
 
 To get a node cider REPL going, use cider-jack-in and at the repl:

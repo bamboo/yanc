@@ -4,19 +4,9 @@
    [cljs.core.match.macros :refer [match]])
   (:require
    [goog.dom :as dom]
-   [goog.events :as gevents]
    [cljs.core.async :refer [chan put! <! merge map< filter<]]
    [cljs.core.match]
    [cljs.reader :as reader]))
-
-(defn event-chan
-  "Creates a channel with events from element el with type event-type
-optionally applying function map-event-fn."
-  ([el event-type] (event-chan el event-type identity))
-  ([el event-type map-event-fn]
-     (let [ch (chan)]
-       (gevents/listen el event-type #(put! ch (map-event-fn %)))
-       ch)))
 
 (def key-codes
   "http://docs.closure-library.googlecode.com/git/closure_goog_events_keynames.js.source.html#line33"
@@ -29,11 +19,16 @@ optionally applying function map-event-fn."
   "Maps a js event's keyCode into a known key code symbol or :key-not-found"
   [ev] (get key-codes (.-keyCode ev) :unknown-key))
 
+(defn on-key-up [e inputs]
+  "Handles a KEYUP event by putting the appropriate input event into the inputs channel."
+  (when (= :enter (event->key e))
+    (put! inputs [:input (-> e .-target .-value)])))
+
 (defprotocol IChatView
-  "A chat view is composed of a input box and its associated channel of key events plus an output view."
-  (-input-box-value [view] "current value of the input box")
-  (-key-ups [view] "channel with the keys pressed by the user in the main input box")
-  (-append-html [view format args] "appends a snippet of html to the output view"))
+  (-inputs [view]
+    "Channel where to take input commands from. Valid commands are [:input \"mynick\"] and [:quit].")
+  (-append-html [view snippet]
+    "Appends a snippet of html to the output view (snippet is in hiccups format: [:b \"a snippet\"]"))
 
 (def Primus (js* "Primus"))
 
@@ -44,37 +39,29 @@ optionally applying function map-event-fn."
     (.on socket "data" #(put! c (reader/read-string %)))
     c))
 
-(defn key->chat-command [^IChatView view key]
-  (case key
-    :enter [:post-message (-input-box-value view)]
-    :escape [:quit]
-    :up [:history-up]
-    :down [:history-down]))
-
-(defn chat-loop [^IChatView view]
-  (let [nick (-input-box-value view)
-        write (fn [format & args] (-append-html view format args))
-        _ (write "joining <b>%s</b> as <b>%s</b>" socket-url nick)
+(defn chat-loop [^IChatView view nick]
+  (let [write #(-append-html view (apply vector :p %))
+        _ (write ["joining " [:b socket-url] " as " [:b nick]])
         socket (.connect Primus socket-url)
         send #(.write socket (pr-str %))
         events (merge [(socket-chan socket)
-                       (->> (-key-ups view)
-                            (filter< (partial not= :unknown-key))
-                            (map< (fn [key] (key->chat-command view key))))])]
+                       (-inputs view)])]
     (go-loop []
       (let [e (<! events)]
         (match e
-               [:post-message message] (send [:message nick message])
+               [:input message] (send [:message nick message])
                [:identify] (send [:user-joined nick])
-               [:message user message] (write "<b>%s</b> %s" user message)
-               [:user-joined user] (write "<b>%s</b> has entered the room." user)
-               [:user-left user] (write "<b>%s</b> has left the room." user)
+               [:message user message] (write [[:b user] " " message])
+               [:user-joined user] (write [[:b user] " has entered the room."])
+               [:user-left user] (write [[:b user] " has left the room."])
                :else (println "unknown event:" e)))
       (recur))))
 
 (defn run-with [^IChatView view]
   (go-loop []
-    (case (<! (-key-ups view))
-      :enter (<! (chat-loop view))
-      nil)
+    (match (<! (-inputs view))
+           [:input nick] (<! (chat-loop view nick))
+           :else nil)
     (recur)))
+
+(enable-console-print!)
