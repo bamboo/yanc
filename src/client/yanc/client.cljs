@@ -14,19 +14,6 @@
 
 (enable-console-print!)
 
-(def input-box (dom/getElement "input-box"))
-
-(defn input-box-value [] (gforms/getValue input-box))
-
-(def output (dom/getElement "output"))
-
-(defn append-html [s & args]
-  (let [html (apply gstr/subs s (map gstr/htmlEscape args))
-        fragment (dom/htmlToDocumentFragment html)
-        p (dom/createDom "p" nil fragment)]
-    (dom/append output p)
-    (gstyle/scrollIntoContainerView p output false)))
-
 (defn event-chan
   "Creates a channel with events from element el with type event-type
 optionally applying function map-event-fn."
@@ -47,19 +34,11 @@ optionally applying function map-event-fn."
   "Maps a js event's keyCode into a known key code symbol or :key-not-found"
   [ev] (get key-codes (.-keyCode ev) :unknown-key))
 
-(defn alert [msg]
-  (.alert js/window msg))
-
-(def key-ups (event-chan input-box (.-KEYUP gevents/EventType) event->key))
-
-(declare chat-loop write-edn key->chat-command)
-
-(defn main []
-  (go-loop [key (<! key-ups)]
-    (case key
-      :enter (<! (chat-loop))
-      nil)
-    (recur (<! key-ups))))
+(defprotocol IChatView
+  "A chat view is composed of a input box and its associated channel of key events plus an output view."
+  (-input-box-value [view] "current value of the input box")
+  (-key-ups [view] "channel with the keys pressed by the user in the main input box")
+  (-append-html [view format args] "appends a snippet of html to the output view"))
 
 (def Primus (js* "Primus"))
 
@@ -70,32 +49,55 @@ optionally applying function map-event-fn."
     (.on socket "data" #(put! c (reader/read-string %)))
     c))
 
-(defn chat-loop []
-  (let [nick (input-box-value)
-        _ (append-html "joining <b>%s</b> as <b>%s</b>" socket-url nick)
-        socket (.connect Primus socket-url)
-        events (merge [(socket-chan socket)
-                       (->> key-ups
-                            (filter< (partial not= :unknown-key))
-                            (map< key->chat-command))])]
-    (go-loop [e (<! events)]
-      (match e
-        [:identify] (write-edn socket [:user-joined nick])
-        [:post-message message] (write-edn socket [:message nick message])
-        [:message user message] (append-html "<b>%s</b> %s" user message)
-        [:user-joined user] (append-html "<b>%s</b> has entered the room." user)
-        [:user-left user] (append-html "<b>%s</b> has left the room." user)
-        :else (println "unknown event:" e))
-      (recur (<! events)))))
-
-(defn key->chat-command [key]
+(defn key->chat-command [^IChatView view key]
   (case key
-    :enter [:post-message (input-box-value)]
+    :enter [:post-message (-input-box-value view)]
     :escape [:quit]
     :up [:history-up]
     :down [:history-down]))
 
-(defn write-edn [socket message]
-  (.write socket (pr-str message)))
+(defn chat-loop [^IChatView view]
+  (let [nick (-input-box-value view)
+        write (fn [format & args] (-append-html view format args))
+        _ (write "joining <b>%s</b> as <b>%s</b>" socket-url nick)
+        socket (.connect Primus socket-url)
+        send #(.write socket (pr-str %))
+        events (merge [(socket-chan socket)
+                       (->> (-key-ups view)
+                            (filter< (partial not= :unknown-key))
+                            (map< (fn [key] (key->chat-command view key))))])]
+    (go-loop []
+      (let [e (<! events)]
+        (match e
+               [:post-message message] (send [:message nick message])
+               [:identify] (send [:user-joined nick])
+               [:message user message] (write "<b>%s</b> %s" user message)
+               [:user-joined user] (write "<b>%s</b> has entered the room." user)
+               [:user-left user] (write "<b>%s</b> has left the room." user)
+               :else (println "unknown event:" e)))
+      (recur))))
 
-(main)
+(defn run [^IChatView view]
+  (go-loop []
+    (case (<! (-key-ups view))
+      :enter (<! (chat-loop view))
+      nil)
+    (recur)))
+
+(defn dom-view []
+  (let [input-box (dom/getElement "input-box")
+        output (dom/getElement "output")
+        key-ups (event-chan input-box (.-KEYUP gevents/EventType) event->key)]
+    (reify IChatView
+      (-input-box-value [view]
+        (gforms/getValue input-box))
+      (-key-ups [view]
+        key-ups)
+      (-append-html [view format args]
+        (let [html (apply gstr/subs format (map gstr/htmlEscape args))
+              fragment (dom/htmlToDocumentFragment html)
+              p (dom/createDom "p" nil fragment)]
+          (dom/append output p)
+          (gstyle/scrollIntoContainerView p output false))))))
+
+(run (dom-view))
