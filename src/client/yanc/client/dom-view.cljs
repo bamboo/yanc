@@ -1,12 +1,10 @@
 (ns yanc.client.dom-view
   (:require
    [yanc.client.controller :as controller]
-   [cljs.core.async :refer [chan put! map< filter<]]
-   [goog.dom.forms :as gforms]
+   [cljs.core.async :refer [chan]]
    [goog.style :as gstyle]
    [goog.dom :as dom]
    [goog.events :as gevents]
-   [goog.string :as gstr]
    [hiccups.runtime :as hiccups]))
 
 (defn dom-view []

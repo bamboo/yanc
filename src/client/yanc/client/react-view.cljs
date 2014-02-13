@@ -1,6 +1,6 @@
 (ns yanc.client.react-view
   (:require
-   [cljs.core.async :refer [chan put!]]
+   [cljs.core.async :refer [chan]]
    [yanc.client.controller :as controller]
    [reagent.core :as reagent :refer [atom]]))
 
@@ -25,9 +25,8 @@
 (reagent/render-component [view] (.-body js/document))
 
 (controller/run-with
- (let [key-ups (chan)]
-   (reify controller/IChatView
-     (-inputs [view]
-       inputs)
-     (-append-html [view snippet]
-       (swap! messages conj snippet)))))
+ (reify controller/IChatView
+   (-inputs [view]
+     inputs)
+   (-append-html [view snippet]
+     (swap! messages conj snippet))))
