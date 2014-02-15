@@ -7,9 +7,9 @@
    [goog.events :as gevents]
    [hiccups.runtime :as hiccups]))
 
-(defn dom-view []
-  (let [input-box (dom/getElement "input-box")
-        output (dom/getElement "output")
+(defn dom-view [input-box-id output-div-id]
+  (let [input-box (dom/getElement input-box-id)
+        output (dom/getElement output-div-id)
         inputs (chan)]
     (gevents/listen input-box (.-KEYUP gevents/EventType) #(controller/on-key-up % inputs))
     (reify controller/IChatView
@@ -22,4 +22,4 @@
           (dom/append output p)
           (gstyle/scrollIntoContainerView p output false))))))
 
-(controller/run-with (dom-view))
+(controller/run-with (dom-view "input-box" "output"))

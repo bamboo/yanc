@@ -4,12 +4,13 @@
    [cljs.core.match.macros :refer [match]])
   (:require
    [goog.dom :as dom]
-   [cljs.core.async :refer [chan put! <! merge map< filter<]]
+   [cljs.core.async :refer [chan put! <! merge]]
    [cljs.core.match]
    [cljs.reader :as reader]))
 
 (def key-codes
-  "http://docs.closure-library.googlecode.com/git/closure_goog_events_keynames.js.source.html#line33"
+  "key codes of interest to the chat.
+http://docs.closure-library.googlecode.com/git/closure_goog_events_keynames.js.source.html#line33"
   {38 :up
    40 :down
    13 :enter
@@ -30,30 +31,30 @@
   (-append-html [view snippet]
     "Appends a snippet of html to the output view (snippet is in hiccups format: [:b \"a snippet\"]"))
 
-(def Primus (js* "Primus"))
-
 (def socket-url (.-URL (dom/getDocument)))
 
-(defn socket-chan [socket]
+(defn edn-channel-for-socket [socket]
   (let [c (chan)]
     (.on socket "data" #(put! c (reader/read-string %)))
     c))
 
+(def Primus (js* "Primus"))
+
 (defn chat-loop [^IChatView view nick]
-  (let [write #(-append-html view (apply vector :p %))
-        _ (write ["joining " [:b socket-url] " as " [:b nick]])
-        socket (.connect Primus socket-url)
-        send #(.write socket (pr-str %))
-        events (merge [(socket-chan socket)
+  (let [write-paragraph #(-append-html view (apply vector :p %))
+        socket (. Primus connect socket-url)
+        send #(. socket write (pr-str %))
+        events (merge [(edn-channel-for-socket socket)
                        (-inputs view)])]
+    (write-paragraph ["joining " [:b socket-url] " as " [:b nick]])
     (go-loop []
       (let [e (<! events)]
         (match e
                [:input message] (send [:message nick message])
                [:identify] (send [:user-joined nick])
-               [:message user message] (write [[:b user] " " message])
-               [:user-joined user] (write [[:b user] " has entered the room."])
-               [:user-left user] (write [[:b user] " has left the room."])
+               [:message user message] (write-paragraph [[:b user] " " message])
+               [:user-joined user] (write-paragraph [[:b user] " has entered the room."])
+               [:user-left user] (write-paragraph [[:b user] " has left the room."])
                :else (println "unknown event:" e)))
       (recur))))
 

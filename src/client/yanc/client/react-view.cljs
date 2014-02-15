@@ -4,9 +4,13 @@
    [yanc.client.controller :as controller]
    [reagent.core :as reagent :refer [atom]]))
 
-(def messages (atom []))
+(def messages
+  "the *model* - a vector of messages in hiccup format"
+  (atom []))
 
-(def inputs (chan))
+(def inputs
+  "the channel for communication with the controller"
+  (chan))
 
 (defn view []
   [:div.container

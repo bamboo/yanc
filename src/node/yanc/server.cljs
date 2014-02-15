@@ -9,75 +9,86 @@
    [cljs.nodejs :as node :refer [require]]
    [cljs.reader :as reader]))
 
-(defn id [spark]
-  (.-id spark))
+(defn write-edn
+  "writes data to a socket in edn format."
+  [socket data]
+  (. socket write (pr-str data)))
 
-(defn write-edn [socket data]
-  (.write socket (pr-str data)))
-
-(defn chat-server-loop [ch primus]
+(defn chat-server-loop
+  "takes chat events from the `events` channel broadcasting messages to the primus server `primus`."
+  [events primus]
   (let [broadcast (partial write-edn primus)
         nicks (atom {})]
     (go-loop []
-      (when-let [e (<! ch)]
+      (when-let [e (<! events)]
         (println e)
         (match e
-          [:connection spark]
+          [:connection spark] ;; a new connection has been made, ask for its identity (nick)
           (write-edn spark [:identify])
 
           [:disconnection spark]
-          (when-let [nick (get @nicks (id spark))]
+          (when-let [nick (get @nicks (.-id spark))]
             (broadcast [:user-left nick])
             (swap! nicks dissoc nick))
 
           [:data spark [:user-joined nick] :as message]
           (do
             (broadcast message)
-            (swap! nicks assoc (id spark) nick))
+            (swap! nicks assoc (.-id spark) nick))
 
           [:data spark message]
           (broadcast message)
 
           :else
           (println "unknown event:" e))
-
         (recur)))))
 
-(defn handler [req res resources]
-  (->
-   (.addListener req "end" #(.serve resources req res))
-   (.resume)))
+(defn chat-events-channel-for
+  "maps primus websocket connection and data events to higher level chat events served through the returned channel."
+  [primus]
+  (let [chat-events (chan 1)
+        publish-event #(put! chat-events %)]
 
-(defn start [& {root :root :or {root "./resources"}}]
-  (let [path (require "path")
-        root (.resolve path root)
-        StaticServer (-> (require "node-static") .-Server)
-        resources (new StaticServer root)
-        http (require "http")
-        server (.createServer http #(handler %1 %2 resources))
-        Primus (require "primus")
-        primus (new Primus server)
-        ch (chan 1)]
-    (println "root is" root)
-
-    ;; map socket events to higher level commands
     (.on primus "connection"
          (fn [spark]
            (do
-             (put! ch [:connection spark])
-             (.on spark "data" #(put! ch [:data spark (reader/read-string %)])))))
-    (.on primus "disconnection" #(put! ch [:disconnection %]))
-    (.on server "close" #(close! ch))
+             (publish-event [:connection spark])
+             (.on spark "data" #(publish-event [:data spark (reader/read-string %)])))))
+    (.on primus "disconnection" #(publish-event [:disconnection %]))
 
-    (chat-server-loop ch primus)
+    chat-events))
 
-    (.listen server 8080)
+(defn default-request-handler
+  "serves requests for static resources from resources."
+  [req res resources]
+  (->
+   (. req addListener "end" #(. resources serve req res))
+   (.resume)))
+
+(defn start
+  "starts a http server that serve resources from resources-path and accepts primus websocket connections."
+  [& [resources-path]]
+  (let [path (require "path")
+        resources-path (. path resolve (or resources-path "./resources"))
+        StaticServer (-> (require "node-static") .-Server)
+        resources (new StaticServer resources-path)
+        http (require "http")
+        server (. http createServer #(default-request-handler %1 %2 resources))
+        Primus (require "primus")
+        primus (new Primus server)
+        chat-events (chat-events-channel-for primus)]
+
+    (println "resources path is" resources-path)
+    (.on server "close" #(close! chat-events))
+    (chat-server-loop chat-events primus)
+    (. server listen 8080)
+
     server))
 
 (defn main [& args]
-  (start))
+  (apply start args))
 
-;(def s (start :root "target/app/resources"))
+;(def s (start "target/app/resources"))
 ;(.close s)
 
 (enable-console-print!)
