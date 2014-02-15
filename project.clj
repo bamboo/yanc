@@ -16,7 +16,8 @@
 
   :plugins [[lein-cljsbuild "1.0.2"]
             [lein-npm "0.3.0"]
-            [lein-resource "0.3.3"]]
+            [lein-resource "0.3.3"]
+            [lein-shell "0.4.0"]]
 
   :node-dependencies [[ws "0.4.31"]
                       [primus "2.0.1"]
@@ -37,4 +38,11 @@
 
   :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}
 
-  :hooks [leiningen.cljsbuild leiningen.resource])
+  :hooks [leiningen.cljsbuild leiningen.resource]
+
+  :aliases {"start"
+            ["do"
+              ["npm" "install"]
+              "resource"
+              ["cljsbuild" "once"]
+              ["shell" "node" "target/app/server.js" "target/app/resources"]]})

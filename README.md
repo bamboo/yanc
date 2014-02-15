@@ -5,6 +5,12 @@ Yet another node/ClojureScript/WebSocket experiment.
 ## Usage
 
 ```
+lein start
+```
+
+which is the same as:
+
+```
 lein npm install
 lein resource
 lein cljsbuild once
